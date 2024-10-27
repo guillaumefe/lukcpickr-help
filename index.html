@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            background: #000;
+            color: #0F0;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        #game-output {
+            background: #001100;
+            padding: 20px;
+            border: 1px solid #0F0;
+            height: 300px;
+            overflow-y: scroll;
+            margin-bottom: 20px;
+        }
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #command-input {
+            flex: 1;
+            background: #001100;
+            border: 1px solid #0F0;
+            color: #0F0;
+            padding: 8px;
+        }
+        button {
+            background: #003300;
+            border: 1px solid #0F0;
+            color: #0F0;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #004400;
+        }
+        .lock-status {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .pin {
+            width: 40px;
+            height: 30px;
+            border: 1px solid #0F0;
+            text-align: center;
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+        }
+        .tension-meter {
+            margin-top: 10px;
+            width: 200px;
+            height: 20px;
+            border: 1px solid #0F0;
+            position: relative;
+        }
+        .tension-level {
+            height: 100%;
+            background: #0F0;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-output"></div>
+    <div class="lock-status" id="lock-status"></div>
+    <div class="tension-meter">
+        <div id="tension-level" class="tension-level"></div>
+    </div>
+    <div id="input-container">
+        <input type="text" id="command-input" placeholder="Entrez une commande (aide pour la liste)">
+        <button onclick="processCommand()">Envoyer</button>
+    </div>
+
+    <script>
+        let lockState = {
+            pins: [
+                { position: Math.floor(Math.random() * 5) + 1, solved: false, binding: false },
+                { position: Math.floor(Math.random() * 5) + 1, solved: false, binding: false },
+                { position: Math.floor(Math.random() * 5) + 1, solved: false, binding: false }
+            ],
+            currentPin: 0,
+            tensionLevel: 0,
+            attempts: 0,
+            lastAction: '',
+            bindingOrder: [0, 1, 2].sort(() => Math.random() - 0.5)
+        };
+
+        const output = document.getElementById('game-output');
+        const input = document.getElementById('command-input');
+        const lockStatus = document.getElementById('lock-status');
+        const tensionLevel = document.getElementById('tension-level');
+
+        function print(message) {
+            output.innerHTML += `<div>${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function updateLockDisplay() {
+            lockStatus.innerHTML = lockState.pins.map((pin, index) => 
+                `<div class="pin" style="background: ${pin.solved ? '#004400' : pin.binding ? '#003300' : '#001100'}">
+                    ${index === lockState.currentPin ? '→' : ''} ${pin.solved ? '✓' : ''}
+                    ${pin.binding ? '(!)' : ''}
+                </div>`
+            ).join('');
+            tensionLevel.style.width = `${lockState.tensionLevel * 20}%`;
+        }
+
+        function updateBindingPin() {
+            // Reset binding state
+            lockState.pins.forEach(pin => pin.binding = false);
+            
+            // Find the next unsolved pin in binding order
+            for (let pinIndex of lockState.bindingOrder) {
+                if (!lockState.pins[pinIndex].solved) {
+                    lockState.pins[pinIndex].binding = true;
+                    break;
+                }
+            }
+        }
+
+        function processCommand() {
+            const command = input.value.toLowerCase().trim();
+            input.value = '';
+
+            if (command === 'aide') {
+                print('Commandes disponibles:');
+                print('- sonder : Tester la résistance de la goupille actuelle');
+                print('- pousser [force] : Pousser la goupille (1-5, défaut: 3)');
+                print('- tension [force] : Régler la tension (1-5, défaut: +1)');
+                print('- relacher : Relâcher complètement la tension');
+                print('- suivant/precedent : Changer de goupille');
+                print('- statut : Voir l\'état actuel du cadenas');
+                return;
+            }
+
+            if (command === 'statut') {
+                print(`Goupille actuelle: ${lockState.currentPin + 1}`);
+                print(`Tension: ${lockState.tensionLevel}/5`);
+                print(`Tentatives: ${lockState.attempts}`);
+                return;
+            }
+
+            if (command.startsWith('tension')) {
+                const parts = command.split(' ');
+                const force = parseInt(parts[1]) || 1;
+                
+                if (force < 1 || force > 5) {
+                    print('La force doit être entre 1 et 5');
+                    return;
+                }
+
+                lockState.tensionLevel = force;
+                updateBindingPin();
+                print(`Tension réglée à ${force}/5`);
+                updateLockDisplay();
+                return;
+            }
+
+            if (command === 'relacher') {
+                lockState.tensionLevel = 0;
+                lockState.pins.forEach(pin => {
+                    if (!pin.solved) {
+                        pin.binding = false;
+                    }
+                });
+                print('Tension relâchée');
+                updateLockDisplay();
+                return;
+            }
+
+            if (command === 'suivant' || command === 'precedent') {
+                lockState.currentPin = command === 'suivant' 
+                    ? (lockState.currentPin + 1) % lockState.pins.length
+                    : (lockState.currentPin - 1 + lockState.pins.length) % lockState.pins.length;
+                print(`Passage à la goupille ${lockState.currentPin + 1}`);
+                updateLockDisplay();
+                return;
+            }
+
+            if (command === 'sonder') {
+                const pin = lockState.pins[lockState.currentPin];
+                lockState.attempts++;
+                
+                if (pin.solved) {
+                    print('Cette goupille est déjà en place.');
+                    return;
+                }
+
+                if (pin.binding && lockState.tensionLevel > 0) {
+                    print('Cette goupille offre une résistance particulière... Elle semble bloquée.');
+                } else if (lockState.tensionLevel === 0) {
+                    print(`La goupille bouge librement... Difficulté estimée: ${pin.position}/5`);
+                } else {
+                    print('La goupille bouge, mais ne semble pas être celle qui bloque...');
+                }
+                return;
+            }
+
+            if (command.startsWith('pousser')) {
+                const parts = command.split(' ');
+                const force = parseInt(parts[1]) || 3;
+                const pin = lockState.pins[lockState.currentPin];
+                lockState.attempts++;
+
+                if (force < 1 || force > 5) {
+                    print('La force doit être entre 1 et 5');
+                    return;
+                }
+
+                if (lockState.tensionLevel === 0) {
+                    print('Vous devez d\'abord appliquer de la tension !');
+                    return;
+                }
+
+                if (pin.solved) {
+                    print('Cette goupille est déjà en place.');
+                    return;
+                }
+
+                // Si c'est la goupille qui bind
+                if (pin.binding) {
+                    // Force idéale = position de la goupille
+                    if (Math.abs(force - pin.position) <= 1) {
+                        pin.solved = true;
+                        print('*click* La goupille est parfaitement en place !');
+                        updateBindingPin();
+                    } else if (force > pin.position) {
+                        print('Trop de force ! La goupille a été poussée trop loin...');
+                        // Risque de faire retomber d'autres goupilles
+                        if (force - pin.position > 2) {
+                            let reset = false;
+                            lockState.pins.forEach((p, i) => {
+                                if (p.solved && Math.random() < 0.5) {
+                                    p.solved = false;
+                                    reset = true;
+                                    print(`*clank* La goupille ${i + 1} est retombée !`);
+                                }
+                            });
+                            if (reset) updateBindingPin();
+                        }
+                    } else {
+                        print('Pas assez de force... La goupille ne bouge pas assez.');
+                    }
+                } else {
+                    print('Cette goupille n\'est pas celle qui bloque actuellement...');
+                    if (force > 3 && Math.random() < 0.3) {
+                        let reset = false;
+                        lockState.pins.forEach((p, i) => {
+                            if (p.solved && Math.random() < 0.3) {
+                                p.solved = false;
+                                reset = true;
+                                print(`*clank* La goupille ${i + 1} est retombée !`);
+                            }
+                        });
+                        if (reset) updateBindingPin();
+                    }
+                }
+
+                updateLockDisplay();
+
+                // Check win condition
+                if (lockState.pins.every(p => p.solved)) {
+                    print('');
+                    print('🎉 FÉLICITATIONS ! Le cadenas est ouvert ! 🎉');
+                    print(`Vous avez réussi en ${lockState.attempts} tentatives.`);
+                }
+                return;
+            }
+
+            print('Commande inconnue. Tapez "aide" pour la liste des commandes.');
+        }
+
+        // Initial setup
+        print('=== Simulation de Lockpicking Améliorée ===');
+        print('Vous êtes face à un cadenas à 3 goupilles.');
+        print('Conseils:');
+        print('1. Commencez par sonder les goupilles sans tension pour évaluer leur difficulté');
+        print('2. Appliquez une légère tension (1-2)');
+        print('3. Identifiez la goupille qui "bind" (qui résiste)');
+        print('4. Poussez cette goupille avec la force appropriée');
+        print('5. Répétez le processus pour les autres goupilles');
+        print('');
+        print('Tapez "aide" pour voir les commandes disponibles.');
+        updateBindingPin();
+        updateLockDisplay();
+
+        // Handle Enter key
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                processCommand();
+            }
+        });
+    </script>
+</body>
+</html>
